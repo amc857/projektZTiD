@@ -15,3 +15,6 @@ frontend/dist/
 # Misc
 *.log
 .DS_Store
+
+# Local secrets
+.env

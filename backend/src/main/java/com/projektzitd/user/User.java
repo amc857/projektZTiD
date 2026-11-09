@@ -42,4 +42,15 @@ public class User {
     /** True after user verified first code via /api/totp/enable. */
     @Column(name = "totp_enabled", nullable = false)
     private boolean totpEnabled = false;
+
+    
+    // ── OAuth 2.0 (GitHub) ────────────────────────────────────────────────────
+
+    /**
+     * Stable numeric GitHub user id (null for local accounts).
+     * We link by id, not login - GitHub logins can be renamed and re-used.
+     */
+    @Column(name = "github_id", unique = true)
+    private Long githubId;
+
 }
