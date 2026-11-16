@@ -55,7 +55,10 @@ export default function FilesPage() {
   }
 
   async function handleLogout() {
-    await api.post('/auth/logout')
+    try {
+      await api.post('/auth/logout')
+    } catch (e) {}
+    localStorage.removeItem('token')
     navigate('/login')
   }
 
