@@ -19,10 +19,10 @@
 cd backend
 
 # Linux/Mac
-JAVA_HOME=/path/to/jdk17 ./mvnw spring-boot:run
+JAVA_HOME=/path/to/jdk25 ./mvnw spring-boot:run
 
 # Windows (PowerShell)
-$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
+$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-25.0.1.8-hotspot"
 & "C:\Users\<user>\.m2\wrapper\dists\apache-maven-3.9.15\<hash>\bin\mvn.cmd" spring-boot:run
 ```
 API dostępne na `http://localhost:8080`  
