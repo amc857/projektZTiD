@@ -1,77 +1,84 @@
-# projektZTiD — Secure File Sharing
+# Projekt ZTiD
 
-**ZTiD project | Politechnika Śląska | Team: Ryczan, Różycki, Sarwa, Czuchra**
-
-## Moduły bezpieczeństwa
-| Mechanizm | Autor | Gałąź |
-|-----------|-------|-------|
-| JWT | Ryczan | Ryczan |
-| **TOTP (RFC 6238)** | **Różycki** | **Rozycki** |
-| OAuth 2.0 / GitHub | Sarwa | Sarwa |
-| RBAC | Czuchra | Czuchra |
+Aplikacja webowa z uwierzytelnianiem dwuskładnikowym (TOTP), obsługą JWT oraz zarządzaniem plikami, składająca się z backendu w Spring Boot oraz frontendu w React (Vite).
 
 ---
 
-## Uruchomienie
+## Wymagania technologiczne
 
-### Backend (Spring Boot)
-```bash
-cd backend
+* **Backend:** Java 25 (JDK 25), Spring Boot 3.5.x, Maven, baza danych H2 (in-memory)
+* **Frontend:** Node.js 20+, React, Vite
+* **Konteneryzacja:** Podman (z `podman-compose`) lub Docker
 
-# Linux/Mac
-JAVA_HOME=/path/to/jdk25 ./mvnw spring-boot:run
+---
 
-# Windows (PowerShell)
-$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-25.0.1.8-hotspot"
-& "C:\Users\<user>\.m2\wrapper\dists\apache-maven-3.9.15\<hash>\bin\mvn.cmd" spring-boot:run
+## Uruchomienie projektu (Podman / Kontenery) — Zalecane
+
+Projekt jest w pełni skonfigurowany do działania w kontenerach, co nie wymaga lokalnej instalacji Javy, Mavena ani Node.js.
+
+### 1. Wymagania wstępne
+Upewnij się, że masz zainstalowanego **Podmana** (np. poprzez *Podman Desktop*) i włączoną maszynę wirtualną Podmana (na systemie Windows/macOS):
+```powershell
+podman machine start
 ```
-API dostępne na `http://localhost:8080`  
-H2 console: `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:ztiddb`)
 
-### Frontend (React + Vite)
-```bash
+### 2. Budowanie i uruchomienie kontenerów
+W głównym katalogu projektu (tam, gdzie znajdują się pliki `Dockerfile` oraz `docker-compose.yml`) uruchom:
+
+```powershell
+podman compose up --build
+```
+*(Jeśli używasz starszej wersji lub zewnętrznego narzędzia, możesz również użyć `podman-compose up --build` lub `docker-compose up --build`).*
+
+### 3. Dostęp do aplikacji
+Po zbudowaniu i uruchomieniu kontenerów poszczególne elementy są dostępne pod adresami:
+* **Frontend (Aplikacja React):** [http://localhost:5173](http://localhost:5173)
+* **Backend API:** [http://localhost:8080](http://localhost:8080)
+* **Konsola bazy danych H2:** [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+  * *JDBC URL:* `jdbc:h2:mem:ztiddb`
+  * *User Name:* `sa`
+  * *Password:* *(pozostaw puste)*
+
+### 4. Zatrzymanie aplikacji
+Aby zatrzymać kontenery, wciśnij `Ctrl + C` w terminalu lub wpisz:
+```powershell
+podman compose down
+```
+
+---
+
+## Uruchomienie lokalne (bez kontenerów)
+
+Jeśli chcesz uruchomić aplikację bezpośrednio na systemie operacyjnym:
+
+### Wymagania lokalne:
+* Zainstalowane **JDK 25** (np. Eclipse Temurin 25 / Microsoft OpenJDK 25)
+* Zainstalowany **Apache Maven**
+* Zainstalowany **Node.js** (wersja 20 lub nowsza)
+
+### 1. Konfiguracja proxy dla uruchomienia lokalnego
+W pliku `frontend/vite.config.js` upewnij się, że adres `target` wskazuje na `localhost` (w wersji kontenerowej wskazuje na nazwę usługi `http://backend:8080`):
+```javascript
+proxy: {
+  '/api': {
+    target: 'http://localhost:8080',
+    changeOrigin: true,
+  }
+}
+```
+
+### 2. Uruchomienie Backend (Spring Boot)
+Otwórz terminal w folderze `backend`, wskaż ścieżkę do JDK 25 i uruchom aplikację:
+```powershell
+cd backend
+$env:JAVA_HOME="C:\Program Files\Microsoft\jdk-25.0.1.8-hotspot"
+mvn spring-boot:run
+```
+
+### 3. Uruchomienie Frontend (Vite)
+Otwórz osobny terminal w folderze `frontend`, zainstaluj zależności i uruchom serwer deweloperski:
+```powershell
 cd frontend
 npm install
 npm run dev
-```
-Aplikacja na `http://localhost:5173` (proxy `/api` → `:8080`)
-
----
-
-## Endpointy API
-
-| Metoda | Ścieżka | Auth | Opis |
-|--------|---------|------|------|
-| POST | `/api/auth/register` | — | Rejestracja |
-| POST | `/api/auth/login` | — | Logowanie; zwraca `totpRequired` |
-| POST | `/api/auth/logout` | sesja | Wylogowanie |
-| GET | `/api/auth/me` | sesja | Sprawdzenie sesji |
-| GET | `/api/totp/setup` | sesja | Generuje sekret + `otpauth://` URI |
-| POST | `/api/totp/enable` | sesja | Aktywuje TOTP po weryfikacji kodu |
-| POST | `/api/totp/verify` | TOTP_PENDING | Weryfikacja kodu przy logowaniu |
-| POST | `/api/totp/disable` | sesja | Dezaktywuje TOTP |
-| GET | `/api/totp/status` | sesja | Sprawdza czy TOTP włączone |
-| GET | `/api/files` | sesja | Lista plików (własne + udostępnione) |
-| POST | `/api/files/upload` | sesja | Upload pliku (multipart/form-data) |
-| GET | `/api/files/{id}/download` | sesja | Download pliku |
-| POST | `/api/files/{id}/share` | sesja | Udostępnienie użytkownikowi |
-
----
-
-## TOTP — przepływ logowania
-
-```
-POST /api/auth/login  { username, password }
-         │
-         ├─ password wrong ──► 401 Unauthorized
-         │
-         ├─ totpEnabled=false ──► sesja pełna ► 200 { authenticated: true }
-         │
-         └─ totpEnabled=true ──► sesja TOTP_PENDING ► 200 { totpRequired: true }
-                  │
-                  ▼
-         POST /api/totp/verify  { code }
-                  │
-                  ├─ kod błędny ──► 401
-                  └─ kod OK ──► sesja pełna ► 200 { authenticated: true }
 ```
