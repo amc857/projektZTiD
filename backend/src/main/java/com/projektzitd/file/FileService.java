@@ -60,6 +60,10 @@ public class FileService {
         return fileRepository.findAccessibleByUser(user, username);
     }
 
+    public List<FileEntity> listAll() {
+        return fileRepository.findAll();
+    }
+
     // ── Download ──────────────────────────────────────────────────────────────
 
     public Path resolveForDownload(String username, Long fileId) {
@@ -121,6 +125,19 @@ public class FileService {
         Path filePath = Paths.get(uploadDir).resolve(file.getStoragePath()).toAbsolutePath().normalize();
         Files.deleteIfExists(filePath);
         fileRepository.delete(file);
+    }
+
+
+    public void renameFile(Long id, String newName, String requester, boolean isAdmin) {
+        FileEntity file = fileRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono pliku"));
+
+        if (!isAdmin && !file.getOwner().equals(requester)) {
+            throw new SecurityException("Brak uprawnień do zmiany nazwy pliku");
+        }
+
+        file.setOriginalName(newName);
+        fileRepository.save(file);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -13,6 +13,10 @@ import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * File management endpoints — all require a fully authenticated session.
  */
@@ -100,5 +104,27 @@ public class FileController {
                 .stream()
                 .map(FileDto::from)
                 .toList();
+    }
+
+    @GetMapping("/admin/user/{username}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FileDto> getFilesByUsername(@PathVariable String username) {
+        return fileService.listAccessible(username).stream()
+                .map(FileDto::from)
+                .toList();
+    }
+
+    @PatchMapping("/{id}/rename")
+    public ResponseEntity<?> renameFile(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String newName = body.get("originalName");
+        if (newName == null || newName.isBlank()) {
+            return ResponseEntity.badRequest().body("Nazwa pliku nie może być pusta");
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+        fileService.renameFile(id, newName.trim(), auth.getName(), isAdmin);
+        return ResponseEntity.ok().build();
     }
 }

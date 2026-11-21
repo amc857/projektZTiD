@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
 
 
 
@@ -84,6 +85,53 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
         user.setRole(newRole);
+        return userRepository.save(user);
+    }
+
+    public User updateOwnAccount(String currentUsername, String newUsername, String newPassword) {
+        User user = getByUsername(currentUsername);
+
+        if (newUsername != null && !newUsername.isBlank() && !newUsername.equals(user.getUsername())) {
+            if (newUsername.trim().length() < 3) {
+                throw new IllegalArgumentException("Nazwa użytkownika musi mieć min. 3 znaki");
+            }
+            if (userRepository.existsByUsername(newUsername.trim())) {
+                throw new IllegalArgumentException("Taka nazwa użytkownika jest już zajęta");
+            }
+            user.setUsername(newUsername.trim());
+        }
+
+        if (newPassword != null && !newPassword.isBlank()) {
+            if (newPassword.length() < 8) {
+                throw new IllegalArgumentException("Hasło musi mieć min. 8 znaków");
+            }
+            user.setPassword(passwordEncoder.encode(newPassword));
+        }
+
+        return userRepository.save(user);
+    }
+
+    public User adminUpdateUser(Long userId, String newUsername, String newPassword, String role, Boolean disableTotp) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono użytkownika"));
+
+        if (newUsername != null && !newUsername.isBlank() && !newUsername.equals(user.getUsername())) {
+            if (userRepository.existsByUsername(newUsername.trim())) {
+                throw new IllegalArgumentException("Nazwa użytkownika jest już zajęta");
+            }
+            user.setUsername(newUsername.trim());
+        }
+        if (newPassword != null && !newPassword.isBlank()) {
+            user.setPassword(passwordEncoder.encode(newPassword));
+        }
+        if (role != null && (role.equals("ROLE_USER") || role.equals("ROLE_ADMIN"))) {
+            user.setRole(role);
+        }
+        if (Boolean.TRUE.equals(disableTotp)) {
+            user.setTotpEnabled(false);
+            user.setTotpSecret(null);
+        }
+
         return userRepository.save(user);
     }
 }
