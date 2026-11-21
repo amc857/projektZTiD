@@ -27,6 +27,21 @@ public class UserController {
             @NotBlank @Size(min = 3, max = 50) String username,
             @NotBlank @Size(min = 8, max = 100) String password) {}
 
+    // Bezpieczne DTO bez hasła i totpSecret
+    public record UserDto(Long id, String username, String role, boolean totpEnabled) {
+        public static UserDto from(User u) {
+            return new UserDto(u.getId(), u.getUsername(), u.getRole(), u.isTotpEnabled());
+        }
+    }
+
+    // Endpoint pod przyszłą walidację na żywo w inpucie "Share"
+    @GetMapping("/exists")
+    public Map<String, Boolean> checkUserExists(@RequestParam String username) {
+        boolean exists = username != null && !username.isBlank()
+                && userService.existsByUsername(username.trim());
+        return Map.of("exists", exists);
+    }
+
     @PostMapping("/register")
     public ResponseEntity<String> register(@RequestBody RegisterRequest req) {
         try {
@@ -86,5 +101,26 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
         }
         return ResponseEntity.ok(new AuthResponse(true, false, auth.getName(), null));
+    }
+
+    //RBAC
+    // RBAC: lista wszystkich użytkowników (tylko ADMIN)
+    @GetMapping("/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<UserDto> getAllUsers() {
+        return userService.getAllUsers().stream()
+                .map(UserDto::from)
+                .toList();
+    }
+
+    @PatchMapping("/users/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateUserRole(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        try {
+            User updated = userService.updateUserRole(id, body.get("role"));
+            return ResponseEntity.ok(UserDto.from(updated));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

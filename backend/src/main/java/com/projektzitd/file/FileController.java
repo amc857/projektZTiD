@@ -82,4 +82,23 @@ public class FileController {
                     e.getSharedWith());
         }
     }
+
+    // ── Delete (Owner or ADMIN) ───────────────────────────────────────────────
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Principal principal) throws IOException {
+        fileService.delete(principal.getName(), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── Admin-only: wszystkie pliki w systemie (przykład @PreAuthorize) ───────
+
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FileDto> listAll() {
+        return fileService.listAll() // np. fileRepository.findAll()
+                .stream()
+                .map(FileDto::from)
+                .toList();
+    }
 }

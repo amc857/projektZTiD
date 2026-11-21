@@ -8,4 +8,4 @@ package com.projektzitd.auth;
  * @param message        human-readable status / username after full auth
  * @param token          JWT token issued upon successful authentication
  */
-public record AuthResponse(boolean authenticated, boolean totpRequired, String message, String token) {}
+public record AuthResponse(boolean authenticated, boolean totpRequired, String message, String token, String role) {}

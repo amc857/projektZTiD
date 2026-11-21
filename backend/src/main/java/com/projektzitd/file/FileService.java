@@ -54,19 +54,24 @@ public class FileService {
 
     public List<FileEntity> listAccessible(String username) {
         User user = getUser(username);
+        if (isAdmin(user)) {
+            return fileRepository.findAll(); // Admin widzi wszystkie pliki
+        }
         return fileRepository.findAccessibleByUser(user, username);
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
 
     public Path resolveForDownload(String username, Long fileId) {
+        User user = getUser(username);
         FileEntity file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 
-        // Access check: owner or in sharedWith list
-        if (!file.getOwner().getUsername().equals(username)
+        // Admin może pobrać każdy plik; zwykły user tylko swój lub udostępniony
+        if (!isAdmin(user)
+                && !file.getOwner().getUsername().equals(username)
                 && !isSharedWith(file, username)) {
-            throw new SecurityException("Access denied");
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
         }
 
         return Paths.get(uploadDir).resolve(file.getStoragePath()).toAbsolutePath().normalize();
@@ -100,6 +105,24 @@ public class FileService {
         }
     }
 
+    // ── Delete ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void delete(String username, Long fileId) throws IOException {
+        User user = getUser(username);
+        FileEntity file = fileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found"));
+
+        // Tylko właściciel LUB Admin może usunąć plik
+        if (!isAdmin(user) && !file.getOwner().getUsername().equals(username)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only owner or ADMIN can delete this file");
+        }
+
+        Path filePath = Paths.get(uploadDir).resolve(file.getStoragePath()).toAbsolutePath().normalize();
+        Files.deleteIfExists(filePath);
+        fileRepository.delete(file);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private boolean isSharedWith(FileEntity file, String username) {
@@ -116,4 +139,9 @@ public class FileService {
         if (filename == null) return "upload";
         return filename.replaceAll("[/\\\\:*?\"<>|]", "_");
     }
+
+    private boolean isAdmin(User user) {
+        return "ROLE_ADMIN".equals(user.getRole());
+    }
+
 }

@@ -39,7 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             } catch (Exception e) {
-                // Invalid or expired token
+                logger.debug("JWT validation failed: {}", e.getMessage());
             }
         }
         filterChain.doFilter(request, response);
