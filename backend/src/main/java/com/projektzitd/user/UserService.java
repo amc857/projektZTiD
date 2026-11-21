@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
+
+
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +42,22 @@ public class UserService implements UserDetailsService {
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(rawPassword));
         return userRepository.save(user);
+    }
+
+    /** Returns the local account linked to a GitHub id, creating it on first login. */
+    @Transactional
+    public User findOrCreateGithubUser(long githubId, String githubLogin) {
+        return userRepository.findByGithubId(githubId).orElseGet(() -> {
+            String username = githubLogin;
+            for (int i = 2; userRepository.existsByUsername(username); i++) {
+                username = githubLogin + "_gh" + i;
+            }
+            User user = new User();
+            user.setUsername(username);
+            user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+            user.setGithubId(githubId);
+            return userRepository.save(user);
+        });
     }
 
     /** Loads the User entity (not just UserDetails) for TOTP operations. */
