@@ -2,13 +2,6 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../api/axios'
 
-/**
- * Login page.
- * Flow:
- *   1. Submit username + password → POST /api/auth/login
- *   2a. totpRequired=false → navigate to /files
- *   2b. totpRequired=true  → show TOTP code field → POST /api/totp/verify
- */
 export default function LoginPage() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
@@ -25,6 +18,9 @@ export default function LoginPage() {
       if (res.data.totpRequired) {
         setTotpRequired(true)
       } else {
+        if (res.data.token) {
+          localStorage.setItem('token', res.data.token)
+        }
         navigate('/files')
       }
     } catch {
@@ -36,7 +32,10 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     try {
-      await api.post('/totp/verify', { code })
+      const res = await api.post('/totp/verify', { code })
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token)
+      }
       navigate('/files')
     } catch {
       setError('Invalid TOTP code')
