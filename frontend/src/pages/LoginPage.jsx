@@ -34,6 +34,9 @@ export default function LoginPage() {
       if (res.data.totpRequired) {
         setTotpRequired(true)
       } else {
+        if (res.data.token) {
+          localStorage.setItem('token', res.data.token)
+        }
         navigate('/files')
       }
     } catch {
@@ -45,7 +48,10 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     try {
-      await api.post('/totp/verify', { code })
+      const res = await api.post('/totp/verify', { code })
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token)
+      }
       navigate('/files')
     } catch {
       setError('Invalid TOTP code')
