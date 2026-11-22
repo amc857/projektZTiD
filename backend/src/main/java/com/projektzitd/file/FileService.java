@@ -64,6 +64,11 @@ public class FileService {
         return fileRepository.findAll();
     }
 
+    /** Pliki, których właścicielem jest dany użytkownik (panel admina). */
+    public List<FileEntity> listOwnedBy(String username) {
+        return fileRepository.findByOwner(getUser(username));
+    }
+
     // ── Download ──────────────────────────────────────────────────────────────
 
     public Path resolveForDownload(String username, Long fileId) {
@@ -94,7 +99,7 @@ public class FileService {
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 
         if (!file.getOwner().getUsername().equals(ownerUsername)) {
-            throw new SecurityException("Only the owner can share a file");
+            throw new org.springframework.security.access.AccessDeniedException("Only the owner can share a file");
         }
 
         // Ensure target user exists
@@ -128,12 +133,14 @@ public class FileService {
     }
 
 
+    @Transactional
     public void renameFile(Long id, String newName, String requester, boolean isAdmin) {
         FileEntity file = fileRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono pliku"));
 
-        if (!isAdmin && !file.getOwner().equals(requester)) {
-            throw new SecurityException("Brak uprawnień do zmiany nazwy pliku");
+        // Porównujemy nazwę właściciela (wcześniej porównywano obiekt User ze Stringiem -> zawsze false)
+        if (!isAdmin && !file.getOwner().getUsername().equals(requester)) {
+            throw new org.springframework.security.access.AccessDeniedException("Brak uprawnień do zmiany nazwy pliku");
         }
 
         file.setOriginalName(newName);
