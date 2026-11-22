@@ -6,6 +6,15 @@ import {
 } from 'lucide-react'
 import api from '../api/axios'
 
+// Backend zwraca zwykle tekst; gdyby przyszedł obiekt (np. domyślny błąd Springa),
+// renderowanie go w JSX wywaliłoby całą stronę.
+function errorText(err, fallback) {
+  const data = err.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object' && data.message) return data.message
+  return fallback
+}
+
 export default function AccountPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -64,13 +73,17 @@ export default function AccountPage() {
       setPassword('')
       setMsg({ type: 'ok', text: 'Dane konta zostały zaktualizowane.' })
     } catch (err) {
-      setMsg({ type: 'err', text: err.response?.data || 'Nie udało się zapisać zmian.' })
+      setMsg({ type: 'err', text: errorText(err, 'Nie udało się zapisać zmian.') })
     }
   }
 
   function handleSearchChange(val) {
     setQuery(val)
     setSelectedUser(null)
+    runSearch(val)
+  }
+
+  function runSearch(val) {
     clearTimeout(searchTimer.current)
 
     if (!val.trim()) {
@@ -121,10 +134,12 @@ export default function AccountPage() {
       setSelectedUser(res.data)
       setEditForm(prev => ({ ...prev, password: '', disableTotp: false }))
       setMsg({ type: 'ok', text: `Zaktualizowano użytkownika ${res.data.username}.` })
-      // Odśwież listę wyników wyszukiwania
-      handleSearchChange(query)
+      // Odśwież listę wyników wyszukiwania (bez zamykania okna edycji)
+      runSearch(query)
+      const filesRes = await api.get(`/files/admin/user/${res.data.username}`)
+      setUserFiles(filesRes.data)
     } catch (err) {
-      setMsg({ type: 'err', text: err.response?.data || 'Błąd aktualizacji użytkownika.' })
+      setMsg({ type: 'err', text: errorText(err, 'Błąd aktualizacji użytkownika.') })
     }
   }
 

@@ -59,7 +59,8 @@ export default function AuthPage({ defaultTab = 'login' }) {
       setTab('login')
       setInfo('Konto zostało utworzone! Możesz się teraz zalogować.')
     } catch (err) {
-      setError(err.response?.data || 'Rejestracja nie powiodła się')
+      const data = err.response?.data
+      setError(typeof data === 'string' && data ? data : 'Rejestracja nie powiodła się')
     } finally {
       setLoading(false)
     }

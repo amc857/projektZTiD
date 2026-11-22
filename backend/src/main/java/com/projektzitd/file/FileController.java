@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.util.List;
@@ -55,7 +56,10 @@ public class FileController {
         Resource resource = new PathResource(filePath);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + meta.getOriginalName() + "\"")
+                        ContentDisposition.attachment()
+                                .filename(meta.getOriginalName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
     }
@@ -109,7 +113,9 @@ public class FileController {
     @GetMapping("/admin/user/{username}")
     @PreAuthorize("hasRole('ADMIN')")
     public List<FileDto> getFilesByUsername(@PathVariable String username) {
-        return fileService.listAccessible(username).stream()
+        // Wcześniej listAccessible(): dla użytkownika-admina zwracało WSZYSTKIE pliki w systemie,
+        // a dla zwykłego także cudze pliki mu udostępnione.
+        return fileService.listOwnedBy(username).stream()
                 .map(FileDto::from)
                 .toList();
     }

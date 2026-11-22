@@ -4,6 +4,7 @@ import com.projektzitd.auth.AuthResponse;
 import com.projektzitd.auth.JwtPort;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
@@ -53,7 +55,7 @@ public class UserController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<String> register(@RequestBody RegisterRequest req) {
+    public ResponseEntity<String> register(@Valid @RequestBody RegisterRequest req) {
         try {
             userService.register(req.username(), req.password());
             return ResponseEntity.status(HttpStatus.CREATED).body("User registered");
@@ -111,7 +113,7 @@ public class UserController {
     }
 
     @PutMapping("/me")
-    public ResponseEntity<?> updateMe(@RequestBody Map<String, String> body) {
+    public ResponseEntity<?> updateMe(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -122,11 +124,48 @@ public class UserController {
                     body.get("username"),
                     body.get("password")
             );
+
+            // Po zmianie nazwy sesja wciąż trzymałaby stary principal (a ma pierwszeństwo
+            // przed JWT) -> kolejne /me kończyłyby się błędem. Odświeżamy kontekst.
+            UserDetails details = userService.loadUserByUsername(updated.getUsername());
+            Authentication refreshed = new UsernamePasswordAuthenticationToken(
+                    details, null, details.getAuthorities());
+            SecurityContextHolder.getContext().setAuthentication(refreshed);
+            HttpSession session = httpRequest.getSession(false);
+            if (session != null) {
+                session.setAttribute(
+                        HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+                        SecurityContextHolder.getContext());
+            }
+
             String newToken = jwtPort.generateToken(updated.getUsername());
             return ResponseEntity.ok(Map.of(
                     "user", UserDto.from(updated),
                     "token", newToken
             ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ── Admin: pełna lista użytkowników + zmiana roli (panel RBAC w FilesPage) ──
+
+    @GetMapping("/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<UserDto> listUsers() {
+        return userService.getAllUsers().stream()
+                .map(UserDto::from)
+                .toList();
+    }
+
+    @PatchMapping("/users/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> changeRole(@PathVariable Long id,
+                                        @RequestBody Map<String, String> body,
+                                        Authentication auth) {
+        try {
+            User updated = userService.updateUserRole(id, body.get("role"), auth.getName());
+            return ResponseEntity.ok(UserDto.from(updated));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -164,14 +203,16 @@ public class UserController {
 
     @PutMapping("/admin/users/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> adminUpdateUser(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> adminUpdateUser(@PathVariable Long id, @RequestBody Map<String, Object> body,
+                                             Authentication auth) {
         try {
             User updated = userService.adminUpdateUser(
                     id,
                     (String) body.get("username"),
                     (String) body.get("password"),
                     (String) body.get("role"),
-                    (Boolean) body.get("disableTotp")
+                    Boolean.TRUE.equals(body.get("disableTotp")),
+                    auth.getName()
             );
             return ResponseEntity.ok(UserDto.from(updated));
         } catch (IllegalArgumentException e) {
