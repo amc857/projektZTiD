@@ -60,6 +60,29 @@ public class UserService implements UserDetailsService {
         });
     }
 
+        /** Returns the local account linked to a Google account (OIDC "sub"), creating it on first login. */
+    @Transactional
+    public User findOrCreateGoogleUser(String googleSub, String email) {
+        return userRepository.findByGoogleId(googleSub).orElseGet(() -> {
+            String base = email != null && email.contains("@")
+                    ? email.substring(0, email.indexOf('@'))
+                    : "google";
+            base = base.replaceAll("[^A-Za-z0-9._-]", "");
+            if (base.length() < 3) base = "google_" + base;
+            if (base.length() > 40) base = base.substring(0, 40);
+
+            String username = base;
+            for (int i = 2; userRepository.existsByUsername(username); i++) {
+                username = base + "_g" + i;
+            }
+            User user = new User();
+            user.setUsername(username);
+            user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+            user.setGoogleId(googleSub);
+            return userRepository.save(user);
+        });
+    }
+
     /** Loads the User entity (not just UserDetails) for TOTP operations. */
     public User getByUsername(String username) {
         return userRepository.findByUsername(username)

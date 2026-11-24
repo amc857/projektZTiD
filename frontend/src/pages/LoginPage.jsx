@@ -5,6 +5,7 @@ import api from '../api/axios'
 // OAuth 2.0: full-page redirect (not XHR) - Spring starts the GitHub flow here
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
 const GITHUB_LOGIN_URL = `${BACKEND_URL}/oauth2/authorization/github`
+const GOOGLE_LOGIN_URL = `${BACKEND_URL}/oauth2/authorization/google`
 
 /**
  * Login page.
@@ -71,6 +72,7 @@ export default function LoginPage() {
           <button type="submit">Log in</button>
           <p style={styles.divider}>or</p>
           <a href={GITHUB_LOGIN_URL} style={styles.github}>Log in with GitHub</a>
+          <a href={GOOGLE_LOGIN_URL} style={styles.google}>Log in with Google</a>
           {error && <p style={styles.error}>{error}</p>}
           <p><Link to="/register">No account? Register</Link></p>
         </form>
@@ -103,5 +105,10 @@ const styles = {
   github: {
     display: 'block', textAlign: 'center', padding: '8px',
     background: '#24292f', color: '#fff', borderRadius: 4, textDecoration: 'none',
+  },
+  google: {
+    display: 'block', textAlign: 'center', padding: '8px',
+    background: '#fff', color: '#3c4043', border: '1px solid #dadce0',
+    borderRadius: 4, textDecoration: 'none',
   },
 }
