@@ -14,6 +14,11 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * TOTP service — implements RFC 6238 (Time-based One-Time Password).
  *
@@ -32,7 +37,19 @@ public class TotpService {
     private static final int CODE_DIGITS = 6;
     private static final int ALLOWED_SKEW = 1;  // ±1 time step
 
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final Duration LOCK_DURATION = Duration.ofMinutes(5);
+    private static final Duration REPLAY_WINDOW = Duration.ofSeconds(90); // (2*skew+1) * step
+
     private final UserRepository userRepository;
+
+    /** Failed-attempt counters per user (in memory, single backend instance). */
+    private final Map<String, FailState> failures = new ConcurrentHashMap<>();
+    /** Last accepted code per user, to reject replay of the same code. */
+    private final Map<String, UsedCode> lastUsed = new ConcurrentHashMap<>();
+
+    private static final class FailState { int count; Instant lockedUntil; }
+    private record UsedCode(String code, Instant at) {}
 
     // ── Secret generation ─────────────────────────────────────────────────────
 
@@ -48,6 +65,9 @@ public class TotpService {
         String secret = generator.generate();
 
         User user = getUser(username);
+        if (user.isTotpEnabled()) {
+            throw new IllegalStateException("TOTP already enabled");
+        }
         user.setTotpSecret(secret);
         user.setTotpEnabled(false); // not enabled until first code verified
         userRepository.save(user);
@@ -81,7 +101,13 @@ public class TotpService {
     public boolean verifyCode(String username, String code) {
         User user = getUser(username);
         if (user.getTotpSecret() == null) return false;
-        return isValidCode(user.getTotpSecret(), code);
+        return checkThrottled(username, user.getTotpSecret(), code);
+    }
+
+    /** True while the user is locked out after too many failed codes. */
+    public boolean isLocked(String username) {
+        FailState f = failures.get(username);
+        return f != null && f.lockedUntil != null && Instant.now().isBefore(f.lockedUntil);
     }
 
     // ── Enable / Disable ─────────────────────────────────────────────────────
@@ -94,7 +120,7 @@ public class TotpService {
     public boolean enable(String username, String code) {
         User user = getUser(username);
         if (user.getTotpSecret() == null) return false;
-        if (!isValidCode(user.getTotpSecret(), code)) return false;
+        if (!checkThrottled(username, user.getTotpSecret(), code)) return false;
 
         user.setTotpEnabled(true);
         userRepository.save(user);
@@ -109,7 +135,7 @@ public class TotpService {
     public boolean disable(String username, String code) {
         User user = getUser(username);
         if (!user.isTotpEnabled()) return false;
-        if (!isValidCode(user.getTotpSecret(), code)) return false;
+        if (!checkThrottled(username, user.getTotpSecret(), code)) return false;
 
         user.setTotpEnabled(false);
         user.setTotpSecret(null);
@@ -118,6 +144,32 @@ public class TotpService {
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Verifies a code with brute-force and replay protection:
+     * 5 failures lock the user for 5 minutes; a code accepted once cannot be reused.
+     */
+    private synchronized boolean checkThrottled(String username, String secret, String code) {
+        if (code == null || !code.matches("\\d{6}")) return false;
+        if (isLocked(username)) return false;
+
+        UsedCode prev = lastUsed.get(username);
+        boolean replay = prev != null && prev.code().equals(code)
+                && Instant.now().isBefore(prev.at().plus(REPLAY_WINDOW));
+
+        if (!replay && isValidCode(secret, code)) {
+            failures.remove(username);
+            lastUsed.put(username, new UsedCode(code, Instant.now()));
+            return true;
+        }
+
+        FailState f = failures.computeIfAbsent(username, k -> new FailState());
+        if (++f.count >= MAX_FAILED_ATTEMPTS) {
+            f.lockedUntil = Instant.now().plus(LOCK_DURATION);
+            f.count = 0;
+        }
+        return false;
+    }
 
     private boolean isValidCode(String secret, String code) {
         TimeProvider timeProvider = new SystemTimeProvider();

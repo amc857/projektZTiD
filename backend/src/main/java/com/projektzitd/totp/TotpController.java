@@ -29,6 +29,9 @@ public class TotpController {
     @GetMapping("/setup")
     public ResponseEntity<?> setup(Principal principal) {
         String username = principal.getName();
+        if (userService.getByUsername(username).isTotpEnabled()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "TOTP already enabled"));
+        }
         String secret = totpService.generateAndStoreSecret(username);
         String uri = totpService.buildOtpauthUri(username, secret);
         return ResponseEntity.ok(Map.of("secret", secret, "otpauthUri", uri));
@@ -58,6 +61,11 @@ public class TotpController {
         if (pendingUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse(false, true, "No pending TOTP verification", null));
+        }
+
+        if (totpService.isLocked(pendingUser)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(new AuthResponse(false, true, "Too many attempts, try again later", null));
         }
 
         boolean ok = totpService.verifyCode(pendingUser, req.code());

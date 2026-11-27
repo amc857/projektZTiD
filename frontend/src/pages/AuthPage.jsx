@@ -75,8 +75,10 @@ export default function AuthPage({ defaultTab = 'login' }) {
       const res = await api.post('/totp/verify', { code })
       if (res.data.token) localStorage.setItem('token', res.data.token)
       navigate('/files')
-    } catch {
-      setError('Nieprawidłowy kod TOTP')
+    } catch (err) {
+      setError(err.response?.status === 429
+        ? 'Zbyt wiele prób. Spróbuj ponownie za kilka minut.'
+        : 'Nieprawidłowy kod TOTP')
     } finally {
       setLoading(false)
     }
