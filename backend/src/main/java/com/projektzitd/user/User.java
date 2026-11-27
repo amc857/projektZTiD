@@ -53,4 +53,9 @@ public class User {
     @Column(name = "github_id", unique = true)
     private Long githubId;
 
+    
+    /** Stable Google account id - OIDC "sub" claim (null for non-Google accounts). */
+    @Column(name = "google_id", unique = true)
+    private String googleId;
+
 }

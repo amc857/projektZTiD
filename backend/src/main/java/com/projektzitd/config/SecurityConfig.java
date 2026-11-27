@@ -3,6 +3,7 @@ package com.projektzitd.config;
 import com.projektzitd.auth.JwtAuthenticationFilter;
 import com.projektzitd.user.UserService;
 import com.projektzitd.oauth.GithubOAuth2UserService;
+import com.projektzitd.oauth.GoogleOidcUserService;
 import com.projektzitd.oauth.StateBoundAuthorizationRequestRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ public class SecurityConfig {
     private final UserService userService;
     private final PasswordEncoder passwordEncoder; // injected from PasswordEncoderConfig — no cycle
     private final GithubOAuth2UserService githubOAuth2UserService;
+    private final GoogleOidcUserService googleOidcUserService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Value("${app.frontend.url}")
@@ -69,7 +71,9 @@ public class SecurityConfig {
                 .authorizationEndpoint(ae -> ae
                     .authorizationRequestRepository(new StateBoundAuthorizationRequestRepository()))
                 // Map GitHub identity → local User account
-                .userInfoEndpoint(ui -> ui.userService(githubOAuth2UserService))
+                .userInfoEndpoint(ui -> ui
+                    .userService(githubOAuth2UserService)    // GitHub (OAuth 2.0)
+                    .oidcUserService(googleOidcUserService)) // Google (OpenID Connect)
                 .defaultSuccessUrl(frontendUrl + "/files", true)
                 .failureUrl(frontendUrl + "/login?error=github")
             )
