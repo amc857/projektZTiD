@@ -1,23 +1,42 @@
 services:
   backend:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
-    # OAuth keys (GitHub/Google) - file is gitignored
     env_file:
-      - ./backend/.env
+      - path: .env
+        required: false
+    volumes:
+      - .env:/app/.env:ro
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+    entrypoint: >
+      sh -c '
+        if [ -z "$$APP_JWT_SECRET" ]; then
+          echo "==================================================================";
+          echo "ERROR: Brak pliku .env lub zmiennej APP_JWT_SECRET!";
+          echo "Utworz plik .env w glownym katalogu: cp .env.example .env";
+          echo "==================================================================";
+          exit 1;
+        fi;
+        exec java -jar app.jar
+      '
     ports:
       - "8080:8080"
 
   frontend:
     image: node:20-alpine
     working_dir: /app
+    depends_on:
+      - backend
     volumes:
       - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
     command: sh -c "npm install && npm run dev -- --host"
     ports:
       - "5173:5173"
-    depends_on:
-      - backend
 
-      
+volumes:
+  backend_data:
+  backend_uploads:
+  frontend_node_modules:

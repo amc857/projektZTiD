@@ -8,10 +8,15 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * File management endpoints — all require a fully authenticated session.
@@ -51,7 +56,10 @@ public class FileController {
         Resource resource = new PathResource(filePath);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + meta.getOriginalName() + "\"")
+                        ContentDisposition.attachment()
+                                .filename(meta.getOriginalName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
     }
@@ -81,5 +89,48 @@ public class FileController {
                     e.getUploadedAt().toString(),
                     e.getSharedWith());
         }
+    }
+
+    // ── Delete (Owner or ADMIN) ───────────────────────────────────────────────
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Principal principal) throws IOException {
+        fileService.delete(principal.getName(), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── Admin-only: wszystkie pliki w systemie (przykład @PreAuthorize) ───────
+
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FileDto> listAll() {
+        return fileService.listAll() // np. fileRepository.findAll()
+                .stream()
+                .map(FileDto::from)
+                .toList();
+    }
+
+    @GetMapping("/admin/user/{username}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FileDto> getFilesByUsername(@PathVariable String username) {
+        // Wcześniej listAccessible(): dla użytkownika-admina zwracało WSZYSTKIE pliki w systemie,
+        // a dla zwykłego także cudze pliki mu udostępnione.
+        return fileService.listOwnedBy(username).stream()
+                .map(FileDto::from)
+                .toList();
+    }
+
+    @PatchMapping("/{id}/rename")
+    public ResponseEntity<?> renameFile(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String newName = body.get("originalName");
+        if (newName == null || newName.isBlank()) {
+            return ResponseEntity.badRequest().body("Nazwa pliku nie może być pusta");
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+        fileService.renameFile(id, newName.trim(), auth.getName(), isAdmin);
+        return ResponseEntity.ok().build();
     }
 }

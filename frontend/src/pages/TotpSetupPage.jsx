@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
+import { ArrowLeft, Shield, CheckCircle2, AlertCircle } from 'lucide-react'
 import api from '../api/axios'
 
-/**
- * TOTP setup page.
- * 1. On mount: GET /api/totp/setup → receives { secret, otpauthUri }
- * 2. Renders QR code (otpauthUri) + plain secret for manual entry
- * 3. User scans QR in authenticator, enters first code → POST /api/totp/enable
- */
 export default function TotpSetupPage() {
   const navigate = useNavigate()
-  const [data, setData] = useState(null)       // { secret, otpauthUri }
+  const [data, setData] = useState(null)
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const [totpStatus, setTotpStatus] = useState(null) // { totpEnabled }
+  const [totpStatus, setTotpStatus] = useState(null)
 
   useEffect(() => {
-    // Check current TOTP status first
     api.get('/totp/status').then(r => setTotpStatus(r.data))
   }, [])
 
@@ -28,7 +22,7 @@ export default function TotpSetupPage() {
       const res = await api.get('/totp/setup')
       setData(res.data)
     } catch {
-      setError('Failed to generate TOTP secret')
+      setError('Nie udało się wygenerować sekretu TOTP')
     }
   }
 
@@ -40,7 +34,7 @@ export default function TotpSetupPage() {
       setSuccess(true)
       setTotpStatus({ totpEnabled: true })
     } catch {
-      setError('Invalid code — try again')
+      setError('Nieprawidłowy kod — spróbuj ponownie')
     }
   }
 
@@ -52,78 +46,127 @@ export default function TotpSetupPage() {
       setTotpStatus({ totpEnabled: false })
       setData(null)
       setCode('')
+      setSuccess(false)
     } catch {
-      setError('Invalid code or TOTP not enabled')
+      setError('Nieprawidłowy kod lub 2FA nie jest włączone')
     }
   }
 
   return (
-    <div style={styles.container}>
-      <h2>Two-Factor Authentication (TOTP)</h2>
-      <button onClick={() => navigate('/files')} style={styles.back}>← Back to files</button>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-slate-950 text-slate-100">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8">
+        <button
+          onClick={() => navigate('/files')}
+          className="text-sm text-slate-400 hover:text-white flex items-center gap-1.5 mb-6 transition cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Wróć do plików</span>
+        </button>
 
-      {totpStatus && (
-        <p>Status: <strong>{totpStatus.totpEnabled ? '✅ Enabled' : '❌ Disabled'}</strong></p>
-      )}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+            <Shield className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Uwierzytelnianie dwuskładnikowe</h2>
+            {totpStatus && (
+              <p className="text-xs text-slate-400">
+                Status:{' '}
+                <span className={totpStatus.totpEnabled ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+                  {totpStatus.totpEnabled ? 'Aktywne' : 'Wyłączone'}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
 
-      {/* ── Enable flow ──────────────────────────────────────────────── */}
-      {!totpStatus?.totpEnabled && (
-        <>
-          {!data ? (
-            <button onClick={handleSetup}>Set up TOTP</button>
-          ) : (
-            <>
-              <p>Scan this QR code with Google Authenticator / Authy:</p>
-              <QRCodeSVG value={data.otpauthUri} size={200} />
-              <p style={styles.secret}>Manual key: <code>{data.secret}</code></p>
-              <form onSubmit={handleEnable} style={styles.form}>
-                <label>Enter the first 6-digit code to confirm:</label>
-                <input
-                  value={code}
-                  onChange={e => setCode(e.target.value)}
-                  maxLength={6}
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  placeholder="000000"
-                  required
-                  autoFocus
-                />
-                <button type="submit">Enable TOTP</button>
-              </form>
-              {success && <p style={styles.ok}>✅ TOTP enabled successfully!</p>}
-            </>
-          )}
-        </>
-      )}
+        {error && (
+          <div className="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-      {/* ── Disable flow ──────────────────────────────────────────────── */}
-      {totpStatus?.totpEnabled && !success && (
-        <form onSubmit={handleDisable} style={styles.form}>
-          <p>To disable TOTP, enter a valid code from your authenticator:</p>
-          <input
-            value={code}
-            onChange={e => setCode(e.target.value)}
-            maxLength={6}
-            inputMode="numeric"
-            pattern="[0-9]{6}"
-            placeholder="000000"
-            required
-          />
-          <button type="submit" style={styles.danger}>Disable TOTP</button>
-        </form>
-      )}
+        {!totpStatus?.totpEnabled && (
+          <div className="mt-6">
+            {!data ? (
+              <button
+                onClick={handleSetup}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-xl transition cursor-pointer"
+              >
+                Skonfiguruj 2FA (TOTP)
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-300">
+                  Zeskanuj kod QR w aplikacji Google Authenticator lub Authy:
+                </p>
+                <div className="flex justify-center">
+                  <div className="bg-white p-3 rounded-xl">
+                    <QRCodeSVG value={data.otpauthUri} size={180} />
+                  </div>
+                </div>
+                <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-400 break-all">
+                  Klucz ręczny: <code className="text-indigo-300">{data.secret}</code>
+                </div>
+                <form onSubmit={handleEnable} className="space-y-3">
+                  <label className="block text-xs text-slate-400">
+                    Wpisz pierwszy 6-cyfrowy kod w celu potwierdzenia:
+                  </label>
+                  <input
+                    value={code}
+                    onChange={e => setCode(e.target.value)}
+                    maxLength={6}
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    placeholder="000000"
+                    required
+                    autoFocus
+                    className="w-full text-center tracking-[0.5em] text-lg font-mono py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl transition cursor-pointer"
+                  >
+                    Włącz 2FA
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
 
-      {error && <p style={styles.error}>{error}</p>}
+        {success && (
+          <div className="mt-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>Uwierzytelnianie TOTP zostało włączone!</span>
+          </div>
+        )}
+
+        {totpStatus?.totpEnabled && !success && (
+          <form onSubmit={handleDisable} className="mt-6 space-y-3">
+            <p className="text-sm text-slate-300">
+              Aby wyłączyć 2FA, podaj aktualny 6-cyfrowy kod z aplikacji:
+            </p>
+            <input
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              maxLength={6}
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              placeholder="000000"
+              required
+              className="w-full text-center tracking-[0.5em] text-lg font-mono py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-rose-500"
+            />
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium rounded-xl transition cursor-pointer"
+            >
+              Wyłącz 2FA
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   )
-}
-
-const styles = {
-  container: { maxWidth: 420, margin: '60px auto', fontFamily: 'sans-serif' },
-  form: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 },
-  secret: { wordBreak: 'break-all', background: '#f4f4f4', padding: '6px 10px', borderRadius: 4 },
-  error: { color: 'red' },
-  ok: { color: 'green' },
-  back: { marginBottom: 16 },
-  danger: { background: '#c0392b', color: '#fff', border: 'none', padding: '8px', cursor: 'pointer' },
 }

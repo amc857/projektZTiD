@@ -13,7 +13,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     /** Files owned by user OR shared with them (username appears in sharedWith). */
     @Query("SELECT f FROM FileEntity f WHERE f.owner = :owner " +
-           "OR f.sharedWith LIKE %:username%")
-    List<FileEntity> findAccessibleByUser(@Param("owner") User owner,
-                                          @Param("username") String username);
+       "OR CONCAT(',', f.sharedWith, ',') LIKE CONCAT('%,', :username, ',%')")
+       List<FileEntity> findAccessibleByUser(@Param("owner") User owner,
+                                             @Param("username") String username);
 }

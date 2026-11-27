@@ -54,19 +54,33 @@ public class FileService {
 
     public List<FileEntity> listAccessible(String username) {
         User user = getUser(username);
+        if (isAdmin(user)) {
+            return fileRepository.findAll(); // Admin widzi wszystkie pliki
+        }
         return fileRepository.findAccessibleByUser(user, username);
+    }
+
+    public List<FileEntity> listAll() {
+        return fileRepository.findAll();
+    }
+
+    /** Pliki, których właścicielem jest dany użytkownik (panel admina). */
+    public List<FileEntity> listOwnedBy(String username) {
+        return fileRepository.findByOwner(getUser(username));
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
 
     public Path resolveForDownload(String username, Long fileId) {
+        User user = getUser(username);
         FileEntity file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 
-        // Access check: owner or in sharedWith list
-        if (!file.getOwner().getUsername().equals(username)
+        // Admin może pobrać każdy plik; zwykły user tylko swój lub udostępniony
+        if (!isAdmin(user)
+                && !file.getOwner().getUsername().equals(username)
                 && !isSharedWith(file, username)) {
-            throw new SecurityException("Access denied");
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
         }
 
         return Paths.get(uploadDir).resolve(file.getStoragePath()).toAbsolutePath().normalize();
@@ -85,7 +99,7 @@ public class FileService {
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 
         if (!file.getOwner().getUsername().equals(ownerUsername)) {
-            throw new SecurityException("Only the owner can share a file");
+            throw new org.springframework.security.access.AccessDeniedException("Only the owner can share a file");
         }
 
         // Ensure target user exists
@@ -98,6 +112,39 @@ public class FileService {
             file.setSharedWith(updated);
             fileRepository.save(file);
         }
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void delete(String username, Long fileId) throws IOException {
+        User user = getUser(username);
+        FileEntity file = fileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found"));
+
+        // Tylko właściciel LUB Admin może usunąć plik
+        if (!isAdmin(user) && !file.getOwner().getUsername().equals(username)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only owner or ADMIN can delete this file");
+        }
+
+        Path filePath = Paths.get(uploadDir).resolve(file.getStoragePath()).toAbsolutePath().normalize();
+        Files.deleteIfExists(filePath);
+        fileRepository.delete(file);
+    }
+
+
+    @Transactional
+    public void renameFile(Long id, String newName, String requester, boolean isAdmin) {
+        FileEntity file = fileRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono pliku"));
+
+        // Porównujemy nazwę właściciela (wcześniej porównywano obiekt User ze Stringiem -> zawsze false)
+        if (!isAdmin && !file.getOwner().getUsername().equals(requester)) {
+            throw new org.springframework.security.access.AccessDeniedException("Brak uprawnień do zmiany nazwy pliku");
+        }
+
+        file.setOriginalName(newName);
+        fileRepository.save(file);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -116,4 +163,9 @@ public class FileService {
         if (filename == null) return "upload";
         return filename.replaceAll("[/\\\\:*?\"<>|]", "_");
     }
+
+    private boolean isAdmin(User user) {
+        return "ROLE_ADMIN".equals(user.getRole());
+    }
+
 }

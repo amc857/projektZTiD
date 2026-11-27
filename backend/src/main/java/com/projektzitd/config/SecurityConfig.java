@@ -3,6 +3,7 @@ package com.projektzitd.config;
 import com.projektzitd.auth.JwtAuthenticationFilter;
 import com.projektzitd.user.UserService;
 import com.projektzitd.oauth.GithubOAuth2UserService;
+import com.projektzitd.oauth.GoogleOidcUserService;
 import com.projektzitd.oauth.StateBoundAuthorizationRequestRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -20,18 +21,19 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import com.projektzitd.oauth.GoogleOidcUserService;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder; // injected from PasswordEncoderConfig — no cycle
     private final GithubOAuth2UserService githubOAuth2UserService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final GoogleOidcUserService googleOidcUserService;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Value("${app.frontend.url}")
     private String frontendUrl;
@@ -53,35 +55,38 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/totp/verify").permitAll()
-                        .anyRequest().authenticated())
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                .requestMatchers("/h2-console/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/totp/verify").permitAll()
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated()
+            )
 
-                // OAuth 2.0 — "Log in with GitHub" (Sarwa)
-                .oauth2Login(oauth -> oauth
-                        // SameSite=Strict-safe storage of the pending request (see class docs)
-                        .authorizationEndpoint(ae -> ae
-                                .authorizationRequestRepository(new StateBoundAuthorizationRequestRepository()))
-                        // Map GitHub identity → local User account
-                        .userInfoEndpoint(ui -> ui
-                                .userService(githubOAuth2UserService)
-                                .oidcUserService(googleOidcUserService))
-                        .defaultSuccessUrl(frontendUrl + "/files", true)
-                        .failureUrl(frontendUrl + "/login?error=github"))
+            // OAuth 2.0 — "Log in with GitHub"
+            .oauth2Login(oauth -> oauth
+                // SameSite=Strict-safe storage of the pending request (see class docs)
+                .authorizationEndpoint(ae -> ae
+                    .authorizationRequestRepository(new StateBoundAuthorizationRequestRepository()))
+                // Map GitHub identity → local User account
+                .userInfoEndpoint(ui -> ui
+                    .userService(githubOAuth2UserService)    // GitHub (OAuth 2.0)
+                    .oidcUserService(googleOidcUserService)) // Google (OpenID Connect)
+                .defaultSuccessUrl(frontendUrl + "/files", true)
+                .failureUrl(frontendUrl + "/login?error=github")
+            )
 
-                // REST API: answer 401 instead of redirecting XHR calls to GitHub
-                // (oauth2Login would otherwise make GitHub the default entry point)
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
-
-                // Allow H2 console frames in dev
-                .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
-                .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            // REST API: answer 401 instead of redirecting XHR calls to GitHub
+            // (oauth2Login would otherwise make GitHub the default entry point)
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+          
+            // Allow H2 console frames in dev
+            .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
+            .authenticationProvider(authenticationProvider())
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
